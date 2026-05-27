@@ -1778,6 +1778,7 @@ def run_real_analysis(records, config):
     for date_key in sorted(date_groups.keys()):
         day_bets = day_won = day_lost = 0
         day_pnl = day_staked = 0.0
+        day_bet_list = []
 
         for record in date_groups[date_key]:
             raw_pnl = float(record.get('pnl', 0) or 0)
@@ -1801,6 +1802,15 @@ def run_real_analysis(records, config):
                 results['void'] += 1
 
             processed_bets.append({**record, 'actual_pnl': pnl})
+            day_bet_list.append({
+                'date': str(record.get('date', ''))[:10],
+                'match': record.get('match', '') or '',
+                'bet_type': record.get('bet_type', '') or record.get('market', '') or '',
+                'odds': round(float(record.get('odds') or 0), 2),
+                'stake': round(stake, 2),
+                'pnl': pnl,
+                'result': 'Won' if pnl > 0 else ('Lost' if pnl < 0 else 'Void'),
+            })
 
         day_win_rate = round((day_won / day_bets) * 100, 1) if day_bets > 0 else 0
         daily_summary[date_key] = {
@@ -1808,6 +1818,7 @@ def run_real_analysis(records, config):
             'win_rate': day_win_rate,
             'pnl': round(day_pnl, 2),
             'staked': round(day_staked, 2),
+            'bets_detail': day_bet_list,
         }
 
     results['total_pnl'] = round(results['total_pnl'], 2)
@@ -1825,12 +1836,13 @@ def run_real_analysis(records, config):
             dt = datetime.strptime(date_key, '%Y-%m-%d')
             wk = f"{dt.year}-W{dt.isocalendar()[1]:02d}"
             if wk not in weekly_summary:
-                weekly_summary[wk] = {'bets': 0, 'won': 0, 'lost': 0, 'pnl': 0.0, 'staked': 0.0}
+                weekly_summary[wk] = {'bets': 0, 'won': 0, 'lost': 0, 'pnl': 0.0, 'staked': 0.0, 'bets_detail': []}
             weekly_summary[wk]['bets'] += day['bets']
             weekly_summary[wk]['won'] += day['won']
             weekly_summary[wk]['lost'] += day['lost']
             weekly_summary[wk]['pnl'] = round(weekly_summary[wk]['pnl'] + day['pnl'], 2)
             weekly_summary[wk]['staked'] += day['staked']
+            weekly_summary[wk]['bets_detail'].extend(day['bets_detail'])
         except Exception:
             pass
     for wk_data in weekly_summary.values():

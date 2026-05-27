@@ -12,8 +12,8 @@
         .sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: #1a1a2e; }
         .sidebar a { color: #fff; text-decoration: none; padding: 15px 20px; display: block; border-left: 3px solid transparent; }
         .sidebar a:hover, .sidebar a.active { background: #16213e; border-left-color: #0f3460; }
-        .pnl-positive { color: #28a745; font-weight: bold; }
-        .pnl-negative { color: #dc3545; font-weight: bold; }
+        .pnl-positive { color: #28a745 !important; font-weight: bold; }
+        .pnl-negative { color: #dc3545 !important; font-weight: bold; }
         .league-check-group { max-height: 180px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; background: #fff; }
         .league-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-bottom: 1px solid #f5f5f5; }
         .league-row:last-child { border-bottom: none; }
@@ -26,6 +26,14 @@
         .market-pill { border: 1px solid #198754; }
         .market-pill.active { background: #198754; color: #fff; }
         .market-pill:not(.active) { background: #fff; color: #198754; }
+        tr.summary-row { cursor: pointer; }
+        .detail-caret { transition: transform 0.15s; font-size: 0.75em; opacity: 0.6; width: 12px; }
+        tr.detail-open .detail-caret { transform: rotate(90deg); }
+        tr.detail-row > td { background: #f1f3f5; }
+        .bet-detail-table { font-size: 0.85em; margin: 0; table-layout: fixed; width: 100%; }
+        .bet-detail-table td, .bet-detail-table th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .bet-detail-table thead th { background: #e2e6ea; font-weight: 600; border-top: none; }
+        .bet-detail-wrap { padding: 0 0 0 1.5rem; }
     </style>
 </head>
 <body>
@@ -286,14 +294,36 @@
                                 </thead>
                                 <tbody>
                                     {% for day in results.daily_results %}
-                                    <tr>
-                                        <td>{{ day.date }}</td>
+                                    <tr class="summary-row" data-detail="daily-detail-{{ loop.index0 }}" onclick="toggleDetail(this)">
+                                        <td><i class="fas fa-chevron-right detail-caret me-2"></i>{{ day.date }}</td>
                                         <td>{{ day.bets }}</td>
                                         <td>{{ day.won }}</td>
                                         <td>{{ day.lost }}</td>
                                         <td>{{ "%.1f"|format(day.win_rate) }}%</td>
                                         <td>£{{ "%.2f"|format(day.staked) }}</td>
                                         <td class="{{ 'pnl-positive' if day.pnl > 0 else 'pnl-negative' }}">£{{ "%.2f"|format(day.pnl) }}</td>
+                                    </tr>
+                                    <tr class="detail-row" id="daily-detail-{{ loop.index0 }}" style="display:none;">
+                                        <td colspan="7" class="p-0">
+                                            <div class="bet-detail-wrap">
+                                                <table class="table table-sm bet-detail-table">
+                                                    <colgroup><col style="width:34%"><col style="width:20%"><col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:13%"></colgroup>
+                                                    <thead><tr><th>Match</th><th>Bet Type</th><th>Odds</th><th>Stake</th><th>Result</th><th>P&amp;L</th></tr></thead>
+                                                    <tbody>
+                                                        {% for b in day.bets_detail %}
+                                                        <tr>
+                                                            <td>{{ b.match }}</td>
+                                                            <td>{{ b.bet_type }}</td>
+                                                            <td>{{ "%.2f"|format(b.odds) if b.odds else '-' }}</td>
+                                                            <td>£{{ "%.2f"|format(b.stake) }}</td>
+                                                            <td class="{{ 'pnl-positive' if b.result == 'Won' else 'pnl-negative' if b.result == 'Lost' else '' }}">{{ b.result }}</td>
+                                                            <td class="{{ 'pnl-positive' if b.pnl > 0 else 'pnl-negative' if b.pnl < 0 else '' }}">£{{ "%.2f"|format(b.pnl) }}</td>
+                                                        </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -328,14 +358,37 @@
                                 </thead>
                                 <tbody>
                                     {% for week in results.weekly_results %}
-                                    <tr>
-                                        <td>{{ week.week }}</td>
+                                    <tr class="summary-row" data-detail="weekly-detail-{{ loop.index0 }}" onclick="toggleDetail(this)">
+                                        <td><i class="fas fa-chevron-right detail-caret me-2"></i>{{ week.week }}</td>
                                         <td>{{ week.bets }}</td>
                                         <td>{{ week.won }}</td>
                                         <td>{{ week.lost }}</td>
                                         <td>{{ "%.1f"|format(week.win_rate) }}%</td>
                                         <td>£{{ "%.2f"|format(week.staked) }}</td>
                                         <td class="{{ 'pnl-positive' if week.pnl > 0 else 'pnl-negative' }}">£{{ "%.2f"|format(week.pnl) }}</td>
+                                    </tr>
+                                    <tr class="detail-row" id="weekly-detail-{{ loop.index0 }}" style="display:none;">
+                                        <td colspan="7" class="p-0">
+                                            <div class="bet-detail-wrap">
+                                                <table class="table table-sm bet-detail-table">
+                                                    <colgroup><col style="width:13%"><col style="width:27%"><col style="width:18%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:12%"></colgroup>
+                                                    <thead><tr><th>Date</th><th>Match</th><th>Bet Type</th><th>Odds</th><th>Stake</th><th>Result</th><th>P&amp;L</th></tr></thead>
+                                                    <tbody>
+                                                        {% for b in week.bets_detail %}
+                                                        <tr>
+                                                            <td>{{ b.date }}</td>
+                                                            <td>{{ b.match }}</td>
+                                                            <td>{{ b.bet_type }}</td>
+                                                            <td>{{ "%.2f"|format(b.odds) if b.odds else '-' }}</td>
+                                                            <td>£{{ "%.2f"|format(b.stake) }}</td>
+                                                            <td class="{{ 'pnl-positive' if b.result == 'Won' else 'pnl-negative' if b.result == 'Lost' else '' }}">{{ b.result }}</td>
+                                                            <td class="{{ 'pnl-positive' if b.pnl > 0 else 'pnl-negative' if b.pnl < 0 else '' }}">£{{ "%.2f"|format(b.pnl) }}</td>
+                                                        </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -603,11 +656,54 @@
 
     // ---- Table sorting ----
     var sortState = {};
+
+    // ---- Expandable bet detail rows ----
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function toggleDetail(row) {
+        var id = row.getAttribute('data-detail');
+        if (!id) return;
+        var detail = document.getElementById(id);
+        if (!detail) return;
+        var hidden = detail.style.display === 'none';
+        detail.style.display = hidden ? '' : 'none';
+        row.classList.toggle('detail-open', hidden);
+    }
+    // Build the hidden detail row markup for a summary row. `withDate` adds a
+    // Date column (used by the weekly table, where bets span multiple days).
+    function betDetailRow(detailId, bets, colspan, withDate) {
+        var head = (withDate ? '<th>Date</th>' : '') +
+            '<th>Match</th><th>Bet Type</th><th>Odds</th><th>Stake</th><th>Result</th><th>P&amp;L</th>';
+        var cols = withDate
+            ? '<col style="width:13%"><col style="width:27%"><col style="width:18%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:12%">'
+            : '<col style="width:34%"><col style="width:20%"><col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:13%">';
+        var body = (bets || []).map(function(b) {
+            var cls = b.pnl > 0 ? 'pnl-positive' : (b.pnl < 0 ? 'pnl-negative' : '');
+            var resultCls = b.result === 'Won' ? 'pnl-positive' : (b.result === 'Lost' ? 'pnl-negative' : '');
+            return '<tr>' +
+                (withDate ? '<td>' + escapeHtml(b.date) + '</td>' : '') +
+                '<td>' + escapeHtml(b.match) + '</td>' +
+                '<td>' + escapeHtml(b.bet_type) + '</td>' +
+                '<td>' + (b.odds ? b.odds.toFixed(2) : '-') + '</td>' +
+                '<td>£' + (b.stake || 0).toFixed(2) + '</td>' +
+                '<td class="' + resultCls + '">' + escapeHtml(b.result) + '</td>' +
+                '<td class="' + cls + '">£' + (b.pnl || 0).toFixed(2) + '</td>' +
+                '</tr>';
+        }).join('');
+        return '<tr class="detail-row" id="' + detailId + '" style="display:none;">' +
+            '<td colspan="' + colspan + '" class="p-0"><div class="bet-detail-wrap">' +
+            '<table class="table table-sm bet-detail-table"><colgroup>' + cols + '</colgroup><thead><tr>' + head + '</tr></thead>' +
+            '<tbody>' + body + '</tbody></table></div></td></tr>';
+    }
+
     function sortTable(tableId, colIndex) {
         var table = document.getElementById(tableId);
         if (!table) return;
         var tbody = table.querySelector('tbody');
-        var rows = Array.from(tbody.querySelectorAll('tr'));
+        // Sort only summary/data rows; expandable detail rows ride along with their parent.
+        var rows = Array.from(tbody.querySelectorAll('tr:not(.detail-row)'));
         var state = sortState[tableId] || {col: -1, asc: true};
         var asc = (state.col === colIndex) ? !state.asc : true;
         sortState[tableId] = {col: colIndex, asc: asc};
@@ -619,7 +715,14 @@
             if (!isNaN(aNum) && !isNaN(bNum)) return asc ? aNum - bNum : bNum - aNum;
             return asc ? aText.localeCompare(bText) : bText.localeCompare(aText);
         });
-        rows.forEach(function(r) { tbody.appendChild(r); });
+        rows.forEach(function(r) {
+            tbody.appendChild(r);
+            var detailId = r.getAttribute('data-detail');
+            if (detailId) {
+                var detail = document.getElementById(detailId);
+                if (detail) tbody.appendChild(detail);
+            }
+        });
         table.querySelectorAll('th').forEach(function(th, i) {
             var icon = th.querySelector('.sort-icon');
             if (icon) icon.textContent = (i === colIndex) ? (asc ? ' ▲' : ' ▼') : '';
@@ -752,16 +855,18 @@
             // Rebuild daily table
             var dailyTbody = document.querySelector('#dailyTable tbody');
             if (dailyTbody) {
-                dailyTbody.innerHTML = (data.daily_results || []).map(function(day) {
-                    return '<tr>' +
-                        '<td>' + day.date + '</td>' +
+                dailyTbody.innerHTML = (data.daily_results || []).map(function(day, i) {
+                    var detailId = 'daily-detail-' + i;
+                    return '<tr class="summary-row" data-detail="' + detailId + '" onclick="toggleDetail(this)">' +
+                        '<td><i class="fas fa-chevron-right detail-caret me-2"></i>' + day.date + '</td>' +
                         '<td>' + day.bets + '</td>' +
                         '<td>' + day.won + '</td>' +
                         '<td>' + day.lost + '</td>' +
                         '<td>' + (day.win_rate || 0).toFixed(1) + '%</td>' +
                         '<td>£' + (day.staked || 0).toFixed(2) + '</td>' +
                         '<td class="' + (day.pnl >= 0 ? 'pnl-positive' : 'pnl-negative') + '">£' + day.pnl.toFixed(2) + '</td>' +
-                        '</tr>';
+                        '</tr>' +
+                        betDetailRow(detailId, day.bets_detail, 7, false);
                 }).join('');
                 sortState['dailyTable'] = {col: -1, asc: true};
                 document.querySelectorAll('#dailyTable th .sort-icon').forEach(function(el) { el.textContent = ''; });
@@ -770,16 +875,18 @@
             // Rebuild weekly table
             var weeklyTbody = document.querySelector('#weeklyTable tbody');
             if (weeklyTbody) {
-                weeklyTbody.innerHTML = (data.weekly_results || []).map(function(wk) {
-                    return '<tr>' +
-                        '<td>' + wk.week + '</td>' +
+                weeklyTbody.innerHTML = (data.weekly_results || []).map(function(wk, i) {
+                    var detailId = 'weekly-detail-' + i;
+                    return '<tr class="summary-row" data-detail="' + detailId + '" onclick="toggleDetail(this)">' +
+                        '<td><i class="fas fa-chevron-right detail-caret me-2"></i>' + wk.week + '</td>' +
                         '<td>' + wk.bets + '</td>' +
                         '<td>' + wk.won + '</td>' +
                         '<td>' + wk.lost + '</td>' +
                         '<td>' + (wk.win_rate || 0).toFixed(1) + '%</td>' +
                         '<td>£' + (wk.staked || 0).toFixed(2) + '</td>' +
                         '<td class="' + (wk.pnl >= 0 ? 'pnl-positive' : 'pnl-negative') + '">£' + wk.pnl.toFixed(2) + '</td>' +
-                        '</tr>';
+                        '</tr>' +
+                        betDetailRow(detailId, wk.bets_detail, 7, true);
                 }).join('');
                 sortState['weeklyTable'] = {col: -1, asc: true};
                 document.querySelectorAll('#weeklyTable th .sort-icon').forEach(function(el) { el.textContent = ''; });
