@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bet Scenario Tool - Data</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <style>
+        body { background-color: #f8f9fa; }
+        .sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: #1a1a2e; }
+        .sidebar a { color: #fff; text-decoration: none; padding: 15px 20px; display: block; border-left: 3px solid transparent; }
+        .sidebar a:hover, .sidebar a.active { background: #16213e; border-left-color: #0f3460; }
+        .results-table { font-size: 0.85rem; }
+        .pnl-positive { color: #28a745; font-weight: bold; }
+        .pnl-negative { color: #dc3545; font-weight: bold; }
+        tr.selected-row { background-color: #fff3cd !important; }
+        tr.dup-row { background-color: #ffe0b2 !important; outline: 1px solid #fb8c00; }
+        tr.hidden-row { display: none; }
+        .action-bar { background: #fff; border: 1px solid #dee2e6; border-radius: 6px; padding: 10px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .filter-bar { background: #fff; border: 1px solid #dee2e6; border-radius: 6px; padding: 10px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        #selectionCount { font-size: 0.9rem; color: #6c757d; }
+        #dupMsg { font-size: 0.85rem; color: #e65100; }
+        th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+        th.sortable:hover { background-color: #495057; }
+        th.sort-asc::after { content: ' ↑'; font-size: 0.75em; }
+        th.sort-desc::after { content: ' ↓'; font-size: 0.75em; }
+    </style>
+</head>
+<body>
+<div class="container-fluid">
+    <div class="row flex-nowrap">
+        <div class="col-md-2 sidebar p-0">
+            <h4 class="text-white p-3"><i class="fas fa-chart-line"></i> Bet Tool</h4>
+            <a href="/data" class="active"><i class="fas fa-database me-2"></i> Data</a>
+            <a href="/analytics-real"><i class="fas fa-chart-line me-2"></i> Analytics - Real Data</a>
+            <a href="/settings"><i class="fas fa-cog me-2"></i> Settings</a>
+        </div>
+
+        <div class="col-md-10 p-4" style="overflow-y: auto; height: 100vh;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2>Data View</h2>
+                <span class="badge bg-secondary fs-6" id="recordCount">{{ records|length }} records</span>
+            </div>
+
+            <!-- Filter bar -->
+            <div class="filter-bar">
+                <i class="fas fa-search text-muted"></i>
+                <input type="text" id="filterInput" class="form-control form-control-sm" style="max-width:260px;" placeholder="Search match, bet type…" oninput="applyFilter()">
+                <select id="sourceFilter" class="form-select form-select-sm" style="max-width:130px;" onchange="applyFilter()">
+                    <option value="">All sources</option>
+                    <option value="betfair">Betfair</option>
+                    <option value="csv">CSV</option>
+                    <option value="pdf">PDF</option>
+                </select>
+                <select id="sportFilter" class="form-select form-select-sm" style="max-width:145px;" onchange="applyFilter()">
+                    <option value="">All sports</option>
+                    <option value="Football">Football</option>
+                    <option value="Horse Racing">Horse Racing</option>
+                </select>
+                <button class="btn btn-sm btn-outline-warning" onclick="highlightDuplicates()">
+                    <i class="fas fa-clone me-1"></i> Highlight Dupes
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="clearDupeHighlight()">
+                    <i class="fas fa-times me-1"></i> Clear Highlight
+                </button>
+                <span id="dupMsg"></span>
+                <span class="ms-auto text-muted" style="font-size:0.85rem;" id="visibleCount"></span>
+            </div>
+
+            <!-- Action bar -->
+            <div class="action-bar">
+                <button class="btn btn-sm btn-outline-secondary" onclick="selectAll()">
+                    <i class="fas fa-check-square me-1"></i> Select All
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="selectNone()">
+                    <i class="fas fa-square me-1"></i> Select None
+                </button>
+                <span id="selectionCount">No rows selected</span>
+                <!-- League tooling hidden in public build — classification data is unreliable. Remove style="display:none" to restore. -->
+                <button class="btn btn-sm btn-info" id="updateLeagueBtn" onclick="showLeagueModal()" disabled style="display:none;">
+                    <i class="fas fa-edit me-1"></i> Update League
+                </button>
+                <button class="btn btn-sm btn-success" id="autoClassifyAllBtn" onclick="autoClassifyAll()" style="display:none;">
+                    <i class="fas fa-magic me-1"></i> Auto-classify All
+                </button>
+                <button class="btn btn-sm btn-outline-success" onclick="exportToExcel()" title="Export filtered rows to Excel">
+                    <i class="fas fa-file-excel me-1"></i> Export to Excel
+                </button>
+                <button class="btn btn-sm btn-danger ms-auto" id="deleteBtn" onclick="deleteSelected()" disabled>
+                    <i class="fas fa-trash me-1"></i> Delete Selected
+                </button>
+            </div>
+
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover results-table mb-0" id="dataTable">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th style="width:36px;">
+                                        <input type="checkbox" id="selectAllChk" title="Select all visible" onchange="toggleAll(this.checked)">
+                                    </th>
+                                    <th class="sortable" data-col="1" onclick="sortBy(1)">Date</th>
+                                    <th class="sortable" data-col="2" onclick="sortBy(2)">Match</th>
+                                    <!-- Country/League hidden in public build — classification data is unreliable. Remove style="display:none" to restore. -->
+                                    <th class="sortable" data-col="3" onclick="sortBy(3)" style="display:none;">Country</th>
+                                    <th class="sortable" data-col="4" onclick="sortBy(4)" style="display:none;">League</th>
+                                    <th class="sortable" data-col="5" onclick="sortBy(5)">Bet Type</th>
+                                    <th class="sortable" data-col="6" onclick="sortBy(6)">Stake</th>
+                                    <th class="sortable" data-col="7" onclick="sortBy(7)">Odds</th>
+                                    <th class="sortable" data-col="8" onclick="sortBy(8)">Status</th>
+                                    <th class="sortable" data-col="9" onclick="sortBy(9)">P&amp;L</th>
+                                    <th class="sortable" data-col="10" onclick="sortBy(10)">Source</th>
+                                    <th class="sortable" data-col="11" onclick="sortBy(11)">Sport</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for record in records %}
+                                <tr data-id="{{ record.id }}" data-sport="{{ record.sport or 'Football' }}">
+                                    <td><input type="checkbox" class="row-chk" value="{{ record.id }}" onchange="onRowCheck()"></td>
+                                    <td>{{ record.date[:10] if record.date else '-' }}</td>
+                                    <td>{{ record.match }}</td>
+                                    <td style="display:none;">{{ record.country or '-' }}</td>
+                                    <td style="display:none;">{{ record.league or '-' }}</td>
+                                    <td>{{ record.bet_type }}</td>
+                                    <td>£{{ "%.2f"|format(record.stake|float) }}</td>
+                                    <td>{{ "%.2f"|format(record.odds|float) if record.odds else '-' }}</td>
+                                    <td>
+                                        {% if record.status == 'Settled' %}
+                                            <span class="badge bg-success">Settled</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ record.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    {% set pval = record.pnl|float(0) %}
+                                    {% set pval_net = (pval * (1.0 - commission / 100.0)) if pval > 0 else pval %}
+                                    <td class="{{ 'pnl-positive' if pval_net > 0 else 'pnl-negative' if pval_net < 0 else '' }}">
+                                        {% if record.pnl is not none %}£{{ "%.2f"|format(pval_net) }}{% else %}–{% endif %}
+                                    </td>
+                                    <td><span class="badge bg-{{ 'warning text-dark' if record.source == 'pdf' else 'light text-dark' }}">{{ record.source or 'csv' }}</span></td>
+                                    <td>
+                                        {% if record.sport == 'Horse Racing' %}
+                                            <span class="badge bg-success"><i class="fas fa-horse me-1"></i>Horses</span>
+                                        {% else %}
+                                            <span class="badge bg-primary"><i class="fas fa-futbol me-1"></i>Football</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- League Update Modal -->
+<div id="leagueUpdateModal" class="modal" style="display:none;background:rgba(0,0,0,0.5);position:fixed;top:0;left:0;width:100%;height:100%;z-index:1050;align-items:center;justify-content:center;">
+    <div class="modal-content" style="background:white;border-radius:8px;padding:24px;max-width:440px;box-shadow:0 5px 15px rgba(0,0,0,0.3);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h5 style="margin:0;"><i class="fas fa-edit me-2"></i> Update League</h5>
+            <button onclick="closeLeagueModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#999;">×</button>
+        </div>
+
+        <!-- Smart detect panel -->
+        <div style="margin-bottom:14px;padding:10px 12px;background:#f0f4ff;border:1px solid #c9d6f0;border-radius:6px;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-sm btn-outline-primary py-0" id="smartDetectBtn" onclick="runSmartDetect()">
+                    <i class="fas fa-magic me-1"></i> Smart Detect
+                </button>
+                <span id="smartDetectResult" style="font-size:0.82rem;color:#666;flex:1;">Auto-detect league from match names</span>
+            </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <label class="form-label small">Select existing league</label>
+            <select id="leagueSelect" class="form-select form-select-sm">
+                <option value="">-- Select League --</option>
+            </select>
+        </div>
+        <div style="margin-bottom:12px;">
+            <label class="form-label small">Or add new: <span class="text-muted">Country / League</span></label>
+            <div style="display:flex;gap:6px;">
+                <input type="text" id="newCountryInput" class="form-control form-control-sm" placeholder="Country (e.g. Italy)">
+                <input type="text" id="newLeagueInput" class="form-control form-control-sm" placeholder="League (e.g. Serie B)">
+            </div>
+            <small class="text-muted">New entry takes priority over dropdown above</small>
+        </div>
+        <div style="margin-bottom:16px;">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="rememberTeamsChk" onchange="toggleTeamsDisplay()">
+                <label class="form-check-label small" for="rememberTeamsChk">Remember these teams for future auto-detection</label>
+            </div>
+            <div id="extractedTeamsDisplay" style="display:none;margin-top:6px;padding:6px 8px;background:#f8f9fa;border-radius:4px;font-size:0.8rem;color:#555;"></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="btn btn-sm btn-secondary" onclick="closeLeagueModal()">Cancel</button>
+            <button id="leagueUpdateConfirmBtn" class="btn btn-sm btn-primary" onclick="confirmLeagueUpdate()">Update</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ── Sort state ──────────────────────────────────────────────────────────
+    var sortCol = 1, sortDir = -1; // default: date descending
+
+    function cellVal(row, colIdx) {
+        var cells = row.querySelectorAll('td');
+        if (!cells[colIdx]) return '';
+        return cells[colIdx].textContent.trim();
+    }
+
+    function exportToExcel() {
+        // Country/League omitted from export in public build — classification data is unreliable.
+        var headers = ['Date','Match','Bet Type','Stake','Odds','Status','P&L','Source','Sport'];
+        var data = [headers];
+        var rows = document.querySelectorAll('#dataTable tbody tr');
+        rows.forEach(function(row) {
+            if (row.classList.contains('hidden-row')) return;
+            data.push([
+                cellVal(row, 1),  // Date
+                cellVal(row, 2),  // Match
+                cellVal(row, 5),  // Bet Type
+                cellVal(row, 6),  // Stake
+                cellVal(row, 7),  // Odds
+                cellVal(row, 8),  // Status
+                cellVal(row, 9),  // P&L
+                cellVal(row, 10), // Source
+                cellVal(row, 11), // Sport
+            ]);
+        });
+        var ws = XLSX.utils.aoa_to_sheet(data);
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Bets');
+        var today = new Date().toISOString().slice(0,10);
+        XLSX.writeFile(wb, 'bets_export_' + today + '.xlsx');
+    }
+
+    function sortBy(col) {
+        var headers = document.querySelectorAll('th.sortable');
+        headers.forEach(function(h) { h.classList.remove('sort-asc', 'sort-desc'); });
+
+        if (sortCol === col) {
+            sortDir = -sortDir;
+        } else {
+            sortCol = col;
+            sortDir = 1;
+        }
+        var th = document.querySelector('th[data-col="' + col + '"]');
+        if (th) th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+
+        var tbody = document.querySelector('#dataTable tbody');
+        var rows = Array.from(tbody.querySelectorAll('tr'));
+        rows.sort(function(a, b) {
+            var va = cellVal(a, col), vb = cellVal(b, col);
+            // Numeric cols: stake(6), odds(7), pnl(9)
+            if ([6, 7, 9].indexOf(col) >= 0) {
+                var na = parseFloat(va.replace(/[£,]/g, '')) || 0;
+                var nb = parseFloat(vb.replace(/[£,]/g, '')) || 0;
+                return (na - nb) * sortDir;
+            }
+            return va.localeCompare(vb, undefined, {numeric: true}) * sortDir;
+        });
+        rows.forEach(function(r) { tbody.appendChild(r); });
+    }
+
+    // ── Filter ──────────────────────────────────────────────────────────────
+    function applyFilter() {
+        var q       = document.getElementById('filterInput').value.toLowerCase().trim();
+        var src     = document.getElementById('sourceFilter').value.toLowerCase();
+        var sport   = document.getElementById('sportFilter').value;
+        var rows    = document.querySelectorAll('#dataTable tbody tr');
+        var visible = 0;
+        rows.forEach(function(row) {
+            var text    = row.textContent.toLowerCase();
+            var cells   = row.querySelectorAll('td');
+            var rowSrc  = cells[10] ? cells[10].textContent.trim().toLowerCase() : '';
+            var rowSport = row.dataset.sport || 'Football';
+            var matchText  = !q     || text.indexOf(q) >= 0;
+            var matchSrc   = !src   || rowSrc.indexOf(src) >= 0;
+            var matchSport = !sport || rowSport === sport;
+            if (matchText && matchSrc && matchSport) {
+                row.classList.remove('hidden-row');
+                visible++;
+            } else {
+                row.classList.add('hidden-row');
+            }
+        });
+        document.getElementById('visibleCount').textContent = visible + ' shown';
+        updateSelectionUI();
+    }
+
+    // ── Duplicate highlight ─────────────────────────────────────────────────
+    function normBetType(bt) {
+        bt = (bt || '').trim();
+        if (bt.toLowerCase().startsWith('back ')) bt = bt.slice(5);
+        var m = bt.match(/^(over|under)\s+([\d.]+)\s+goals?$/i);
+        if (m) return 'over/under ' + m[2] + ' goals';
+        return bt.toLowerCase();
+    }
+
+    function normMatch(m) {
+        return (m || '').toLowerCase().trim()
+            .replace(/\s+vs\.?\s+/g, ' v ').replace(/\s+/g, ' ');
+    }
+
+    function highlightDuplicates() {
+        clearDupeHighlight();
+        var rows = Array.from(document.querySelectorAll('#dataTable tbody tr'));
+        var data = rows.map(function(row) {
+            var cells = row.querySelectorAll('td');
+            return {
+                el: row,
+                date: cells[1] ? cells[1].textContent.trim() : '',
+                nm: normMatch(cells[2] ? cells[2].textContent.trim() : ''),
+                nbt: normBetType(cells[5] ? cells[5].textContent.trim() : ''),
+                stake: parseFloat((cells[6] ? cells[6].textContent.replace('£','').trim() : '0')) || 0,
+            };
+        });
+
+        var dupSet = new Set();
+        for (var i = 0; i < data.length; i++) {
+            for (var j = i + 1; j < data.length; j++) {
+                var a = data[i], b = data[j];
+                if (a.nm !== b.nm || a.nbt !== b.nbt || Math.abs(a.stake - b.stake) >= 0.01) continue;
+                // Date within ±1 day
+                try {
+                    var d1 = new Date(a.date), d2 = new Date(b.date);
+                    if (isNaN(d1) || isNaN(d2) || Math.abs(d1 - d2) > 86400000 * 1.5) continue;
+                } catch(e) { continue; }
+                dupSet.add(i);
+                dupSet.add(j);
+            }
+        }
+        dupSet.forEach(function(idx) { data[idx].el.classList.add('dup-row'); });
+        document.getElementById('dupMsg').textContent = dupSet.size > 0
+            ? dupSet.size + ' potential duplicate rows highlighted'
+            : 'No duplicates found';
+    }
+
+    function clearDupeHighlight() {
+        document.querySelectorAll('.dup-row').forEach(function(r) { r.classList.remove('dup-row'); });
+        document.getElementById('dupMsg').textContent = '';
+    }
+
+    // ── Checkbox helpers ────────────────────────────────────────────────────
+    function getChecked() {
+        return Array.from(document.querySelectorAll('.row-chk:checked')).map(cb => parseInt(cb.value));
+    }
+
+    function visibleCheckboxes() {
+        return Array.from(document.querySelectorAll('#dataTable tbody tr:not(.hidden-row) .row-chk'));
+    }
+
+    function updateSelectionUI() {
+        var checked = document.querySelectorAll('.row-chk:checked').length;
+        var visChks = visibleCheckboxes();
+        var visChecked = visChks.filter(cb => cb.checked).length;
+        document.getElementById('selectAllChk').checked = visChks.length > 0 && visChecked === visChks.length;
+        document.getElementById('selectAllChk').indeterminate = visChecked > 0 && visChecked < visChks.length;
+        document.getElementById('deleteBtn').disabled = checked === 0;
+        document.getElementById('updateLeagueBtn').disabled = checked === 0;
+        document.getElementById('selectionCount').textContent = checked === 0
+            ? 'No rows selected'
+            : checked + ' row' + (checked === 1 ? '' : 's') + ' selected';
+        document.querySelectorAll('.row-chk').forEach(function(cb) {
+            cb.closest('tr').classList.toggle('selected-row', cb.checked);
+        });
+    }
+
+    function onRowCheck() { updateSelectionUI(); }
+
+    function toggleAll(checked) {
+        visibleCheckboxes().forEach(function(cb) { cb.checked = checked; });
+        updateSelectionUI();
+    }
+
+    function selectAll()  { document.getElementById('selectAllChk').checked = true;  toggleAll(true);  }
+    function selectNone() { document.getElementById('selectAllChk').checked = false; toggleAll(false); }
+
+    function getSelectedIds() { return getChecked(); }
+
+    // ── Delete ──────────────────────────────────────────────────────────────
+    function deleteSelected() {
+        var ids = getChecked();
+        if (ids.length === 0) return;
+        if (!confirm('Delete ' + ids.length + ' record' + (ids.length === 1 ? '' : 's') + '? This cannot be undone.')) return;
+
+        document.getElementById('deleteBtn').disabled = true;
+        document.getElementById('deleteBtn').innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Deleting…';
+
+        fetch('/api/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ids: ids})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) { alert(data.error); return; }
+            ids.forEach(function(id) {
+                var row = document.querySelector('tr[data-id="' + id + '"]');
+                if (row) row.remove();
+            });
+            document.getElementById('recordCount').textContent = data.remaining + ' records';
+            document.getElementById('deleteBtn').innerHTML = '<i class="fas fa-trash me-1"></i> Delete Selected';
+            selectNone();
+            applyFilter();
+        })
+        .catch(function(err) {
+            console.error(err);
+            alert('Delete failed. Check console.');
+            document.getElementById('deleteBtn').disabled = false;
+            document.getElementById('deleteBtn').innerHTML = '<i class="fas fa-trash me-1"></i> Delete Selected';
+        });
+    }
+
+    // Init
+    applyFilter();
+
+    // ── League Update ───────────────────────────────────────────────────────
+    let allLeagues = [];
+    let _extractedTeams = [];
+
+    function loadLeagues() {
+        fetch('/api/leagues-list')
+        .then(r => r.json())
+        .then(data => {
+            allLeagues = data || [];
+            populateLeagueDropdown();
+        });
+    }
+
+    function populateLeagueDropdown() {
+        const select = document.getElementById('leagueSelect');
+        select.innerHTML = '<option value="">-- Select League --</option>';
+        allLeagues.forEach(l => {
+            const opt = document.createElement('option');
+            opt.value = JSON.stringify({country: l.country, league: l.league});
+            opt.textContent = l.label;
+            select.appendChild(opt);
+        });
+    }
+
+    function showLeagueModal() {
+        const ids = getSelectedIds();
+        if (!ids.length) { alert('No rows selected'); return; }
+
+        // Extract team names from selected rows' match column (col 2)
+        _extractedTeams = [];
+        document.querySelectorAll('#dataTable tbody tr input[type=checkbox]:checked').forEach(function(chk) {
+            var matchText = cellVal(chk.closest('tr'), 2);
+            matchText.split(/\s+v(?:s\.?)?\s+/i).forEach(function(p) {
+                var t = p.trim();
+                if (t && !_extractedTeams.includes(t)) _extractedTeams.push(t);
+            });
+        });
+
+        // Reset modal state
+        document.getElementById('newCountryInput').value = '';
+        document.getElementById('newLeagueInput').value = '';
+        document.getElementById('rememberTeamsChk').checked = false;
+        document.getElementById('extractedTeamsDisplay').style.display = 'none';
+
+        document.getElementById('leagueUpdateModal').style.display = 'flex';
+        document.getElementById('leagueSelect').focus();
+    }
+
+    function closeLeagueModal() {
+        document.getElementById('leagueUpdateModal').style.display = 'none';
+    }
+
+    function toggleTeamsDisplay() {
+        var chk = document.getElementById('rememberTeamsChk');
+        var display = document.getElementById('extractedTeamsDisplay');
+        if (chk.checked) {
+            display.innerHTML = '<strong>Teams to remember:</strong> ' +
+                (_extractedTeams.length
+                    ? _extractedTeams.map(t => '<span style="background:#e9ecef;padding:2px 7px;border-radius:10px;margin:2px;display:inline-block">' + t + '</span>').join('')
+                    : '<em>None extracted</em>');
+            display.style.display = 'block';
+        } else {
+            display.style.display = 'none';
+        }
+    }
+
+    function confirmLeagueUpdate() {
+        // New text inputs take priority over the dropdown
+        var newCountry = document.getElementById('newCountryInput').value.trim();
+        var newLeague = document.getElementById('newLeagueInput').value.trim();
+        var country, league;
+        if (newCountry && newLeague) {
+            country = newCountry;
+            league = newLeague;
+        } else {
+            const select = document.getElementById('leagueSelect');
+            if (!select.value) { alert('Please select a league or enter Country and League'); return; }
+            const sel = JSON.parse(select.value);
+            country = sel.country;
+            league = sel.league;
+        }
+
+        const ids = getSelectedIds();
+        const rememberTeams = document.getElementById('rememberTeamsChk').checked;
+        const btn = document.getElementById('leagueUpdateConfirmBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Updating...';
+
+        fetch('/api/bulk-update-league', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ids: ids, country: country, league: league })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                btn.disabled = false; btn.innerHTML = 'Update';
+                alert('Error: ' + data.error); return;
+            }
+            if (rememberTeams && _extractedTeams.length) {
+                return fetch('/api/team-map/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ teams: _extractedTeams, country: country, league: league })
+                })
+                .then(r => r.json())
+                .then(mapData => {
+                    btn.disabled = false; btn.innerHTML = 'Update';
+                    var msg = 'Updated ' + data.updated + ' records.';
+                    if (mapData.saved) msg += ' Saved ' + mapData.saved + ' team(s) to auto-detection.';
+                    alert(msg);
+                    closeLeagueModal(); location.reload();
+                });
+            }
+            btn.disabled = false; btn.innerHTML = 'Update';
+            alert('Updated ' + data.updated + ' records');
+            closeLeagueModal(); location.reload();
+        })
+        .catch(err => {
+            btn.disabled = false; btn.innerHTML = 'Update';
+            alert('Update failed: ' + err);
+        });
+    }
+
+    // Load leagues on page init
+    window.addEventListener('load', function() {
+        loadLeagues();
+    });
+
+    // Close modal on Escape
+    window.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeLeagueModal();
+    });
+
+    // ── Smart Detect ────────────────────────────────────────────────────────
+    const METHOD_LABELS = {
+        'team_map':    'Team map',
+        'keyword':     'Keyword match',
+        'fuzzy_team':  'Fuzzy match',
+        'external_api':'External API',
+    };
+
+    function runSmartDetect() {
+        const ids = getSelectedIds();
+        if (!ids.length) return;
+
+        const btn = document.getElementById('smartDetectBtn');
+        const resultEl = document.getElementById('smartDetectResult');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Detecting…';
+        resultEl.innerHTML = '';
+
+        fetch('/api/auto-detect-league', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ids: ids})
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-magic me-1"></i> Smart Detect';
+            if (data.error) {
+                resultEl.innerHTML = '<span class="text-danger">' + data.error + '</span>';
+                return;
+            }
+            const c = data.consensus;
+            if (c && c.country !== 'Other') {
+                const label = METHOD_LABELS[c.method] || c.method;
+                const badgeClass = c.confidence === 'high' ? 'bg-success' : 'bg-warning text-dark';
+                resultEl.innerHTML =
+                    '<strong>' + c.country + ' &ndash; ' + c.league + '</strong> ' +
+                    '<span class="badge ' + badgeClass + ' ms-1">' + c.confidence + '</span> ' +
+                    '<span class="text-muted" style="font-size:0.78rem;">(' + label + ', ' + c.matched + '/' + c.total + ')</span> ' +
+                    '<button class="btn btn-sm btn-outline-success py-0 px-2 ms-2" style="font-size:0.75rem;" ' +
+                    'onclick="applyDetected(\'' + c.country.replace(/'/g, "\\'") + '\',\'' + c.league.replace(/'/g, "\\'") + '\')">Apply</button>';
+            } else {
+                resultEl.innerHTML = '<span class="text-warning"><i class="fas fa-question-circle me-1"></i>Could not detect league</span>';
+            }
+        })
+        .catch(function() {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-magic me-1"></i> Smart Detect';
+            resultEl.innerHTML = '<span class="text-danger">Detection failed</span>';
+        });
+    }
+
+    function applyDetected(country, league) {
+        const select = document.getElementById('leagueSelect');
+        for (let i = 0; i < select.options.length; i++) {
+            if (select.options[i].value) {
+                try {
+                    const val = JSON.parse(select.options[i].value);
+                    if (val.country === country && val.league === league) {
+                        select.selectedIndex = i;
+                        return;
+                    }
+                } catch(e) {}
+            }
+        }
+        // Not in list yet — add and select it
+        const opt = document.createElement('option');
+        opt.value = JSON.stringify({country: country, league: league});
+        opt.textContent = country + ' - ' + league;
+        opt.selected = true;
+        select.appendChild(opt);
+    }
+
+    function autoClassifyAll() {
+        if (!confirm('Auto-detect and save league for all unclassified (Other/Unknown) bets?\n\nThis will not overwrite bets that already have a league set.')) return;
+        const btn = document.getElementById('autoClassifyAllBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Classifying…';
+
+        fetch('/api/bulk-auto-detect', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: '{}'
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-magic me-1"></i> Auto-classify All';
+            if (data.success) {
+                alert('Updated ' + data.updated + ' of ' + data.checked + ' unclassified bets.');
+                location.reload();
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-magic me-1"></i> Auto-classify All';
+            alert('Request failed: ' + err);
+        });
+    }
+
+</script>
+</body>
+</html>

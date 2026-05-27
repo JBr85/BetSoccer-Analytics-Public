@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bet Scenario Tool - Settings</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #f8f9fa; }
+        .sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: #1a1a2e; }
+        .sidebar a { color: #fff; text-decoration: none; padding: 15px 20px; display: block; border-left: 3px solid transparent; }
+        .sidebar a:hover, .sidebar a.active { background: #16213e; border-left-color: #0f3460; }
+    </style>
+</head>
+<body>
+<div class="container-fluid">
+    <div class="row flex-nowrap">
+        <div class="col-md-2 sidebar p-0">
+            <h4 class="text-white p-3"><i class="fas fa-chart-line"></i> Bet Tool</h4>
+            <a href="/data"><i class="fas fa-database me-2"></i> Data</a>
+            <a href="/analytics-real"><i class="fas fa-chart-line me-2"></i> Analytics - Real Data</a>
+            <a href="/settings" class="active"><i class="fas fa-cog me-2"></i> Settings</a>
+        </div>
+
+        <div class="col-md-10 p-4" style="overflow-y: auto; height: 100vh;">
+            <h2 class="mb-4">Settings</h2>
+
+            <!-- Staking defaults -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Default Staking Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <form id="settingsForm">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Staking Strategy</label>
+                                <select class="form-select" name="staking_strategy">
+                                    <option value="flat" {% if config.staking_strategy == 'flat' %}selected{% endif %}>Flat Stake</option>
+                                    <option value="compounding" {% if config.staking_strategy == 'compounding' %}selected{% endif %}>Compounding</option>
+                                    <option value="fibonacci" {% if config.staking_strategy == 'fibonacci' %}selected{% endif %}>Fibonacci</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Starting Bank (£)</label>
+                                <input type="number" class="form-control" name="daily_bank" value="{{ config.daily_bank }}">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Base Stake (£)</label>
+                                <input type="number" class="form-control" name="base_stake" value="{{ config.base_stake or 20 }}">
+                                <small class="text-muted">Used for flat and fibonacci strategies</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Stake Percentage (%)</label>
+                                <input type="number" class="form-control" name="stake_percentage" value="{{ config.stake_percentage }}" max="100">
+                                <small class="text-muted">Used for compounding strategy</small>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Daily Picks Folder</label>
+                                <input type="text" class="form-control" name="picks_folder" value="{{ config.picks_folder or 'picks' }}">
+                                <small class="text-muted">Folder (relative to app) where daily CSV picks files are stored — used by the Daily Picks loader on the Place Bets page</small>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-success">Save Settings</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Data Management -->
+            <div class="card mb-4">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">Data Management</h5>
+                </div>
+                <div class="card-body">
+                    <p>Records loaded: <strong>{{ record_count }}</strong></p>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-warning" onclick="deduplicate()">
+                            <i class="fas fa-filter me-2"></i> Remove Duplicates
+                        </button>
+                    </div>
+                    <div id="dedupStatus" class="mt-2 small"></div>
+                </div>
+            </div>
+
+            <!-- Betfair Integration -->
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="fas fa-sync me-2"></i> Betfair Integration</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Connect your Betfair account to automatically sync your betting history.</p>
+                    
+                    <div id="betfairStatus" class="alert alert-secondary">
+                        <i class="fas fa-circle text-secondary me-1"></i> Checking connection...
+                    </div>
+                    
+                    <form id="betfairForm" autocomplete="off">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Betfair Username</label>
+                                <input type="text" class="form-control" name="bf_username" value="{{ bf_username }}" placeholder="your.email@example.com" autocomplete="off">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Betfair Password</label>
+                                <input type="password" class="form-control" name="bf_password" placeholder="{{ '●●●●●●●● (saved — leave blank to keep)' if bf_password_set else 'Enter password' }}" autocomplete="new-password">
+                                <small class="text-muted">Leave blank to use saved password</small>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">App Key (optional)</label>
+                                <input type="text" class="form-control" name="bf_app_key" value="{{ bf_app_key }}" placeholder="Enter your Betfair app key" autocomplete="off">
+                                <small class="text-muted">Usually not needed to change</small>
+                            </div>
+                            <div class="col-md-6 mb-3 d-flex align-items-end">
+                                <div class="d-flex gap-2 w-100 flex-wrap">
+                                    {% if bf_password_set %}
+                                    <button type="button" class="btn btn-success" onclick="connectSaved()">
+                                        <i class="fas fa-plug me-1"></i> Connect ({{ bf_username }})
+                                    </button>
+                                    {% endif %}
+                                    <button type="button" class="btn btn-primary" onclick="connectBetfair()">
+                                        <i class="fas fa-key me-1"></i> Connect with form values
+                                    </button>
+                                    <button type="button" class="btn btn-success" onclick="syncBetfair()">
+                                        <i class="fas fa-sync me-1"></i> Sync History
+                                    </button>
+                                    <!-- League re-classification hidden in public build — Betfair competition data is unreliable. Remove style="display:none" to restore. -->
+                                    <button type="button" class="btn btn-outline-warning" onclick="reenrichFromBetfair()" title="Re-fetch Betfair history and fix league classification using the competition name Betfair assigned" style="display:none;">
+                                        <i class="fas fa-tags me-1"></i> Re-classify from Betfair
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+
+                    <div id="betfairSyncResult" class="mt-2 small"></div>
+                    
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">Days to sync</label>
+                            <select class="form-select" id="syncDays">
+                                <option value="7">Last 7 days</option>
+                                <option value="14">Last 14 days</option>
+                                <option value="30" selected>Last 30 days</option>
+                                <option value="60">Last 60 days</option>
+                                <option value="90">Last 90 days</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <p class="text-muted small mt-2">
+                                <i class="fas fa-info-circle"></i> Note: Full history sync requires Betfair certificate authentication. 
+                                For basic sync, enter your Betfair username and password above.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('settingsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const config = {};
+        formData.forEach((v, k) => config[k] = isNaN(v) ? v : parseFloat(v));
+
+        fetch('/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        })
+        .then(r => r.json())
+        .then(() => alert('Settings saved.'));
+    });
+
+    function deduplicate() {
+        if (!confirm('Remove duplicate records from the database?')) return;
+        fetch('/api/deduplicate', {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            const s = document.getElementById('dedupStatus');
+            s.innerHTML = `<span class="text-success">Removed ${data.deleted} duplicates. ${data.remaining} records remain.</span>`;
+        });
+    }
+
+    // Betfair Integration
+    function checkBetfairStatus() {
+        fetch('/api/betfair/status')
+        .then(r => r.json())
+        .then(data => {
+            const statusEl = document.getElementById('betfairStatus');
+            if (data.configured) {
+                if (data.connected) {
+                    statusEl.className = 'alert alert-success';
+                    statusEl.innerHTML = '<i class="fas fa-check-circle text-success me-1"></i> Connected to Betfair';
+                } else {
+                    statusEl.className = 'alert alert-warning';
+                    statusEl.innerHTML = '<i class="fas fa-exclamation-triangle text-warning me-1"></i> Credentials saved but not connected';
+                }
+            } else {
+                statusEl.className = 'alert alert-secondary';
+                statusEl.innerHTML = '<i class="fas fa-circle text-secondary me-1"></i> Not configured';
+            }
+        });
+    }
+
+    function _doConnect(payload, btn, originalHtml) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Connecting...';
+        fetch('/api/betfair/connect', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            const statusEl = document.getElementById('betfairStatus');
+            if (data.success) {
+                statusEl.className = 'alert alert-success';
+                statusEl.innerHTML = '<i class="fas fa-check-circle text-success me-1"></i> Connected to Betfair!';
+            } else {
+                statusEl.className = 'alert alert-danger';
+                statusEl.innerHTML = '<i class="fas fa-times-circle text-danger me-1"></i> ' + data.message;
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            alert('Connection error: ' + err);
+        });
+    }
+
+    function connectSaved() {
+        // Uses saved credentials on the server — no form values needed
+        const btn = event.target;
+        _doConnect({}, btn, btn.innerHTML);
+    }
+
+    function connectBetfair() {
+        const form = document.getElementById('betfairForm');
+        const username = form.querySelector('[name="bf_username"]').value;
+        const password = form.querySelector('[name="bf_password"]').value;
+        const appKey = form.querySelector('[name="bf_app_key"]').value;
+
+        if (!username) {
+            alert('Please enter your Betfair username');
+            return;
+        }
+
+        const payload = {username, app_key: appKey};
+        if (password) payload.password = password;
+
+        const btn = event.target;
+        _doConnect(payload, btn, btn.innerHTML);
+    }
+
+    function syncBetfair() {
+        const daysBack = document.getElementById('syncDays').value;
+        const resultEl = document.getElementById('betfairSyncResult');
+        
+        resultEl.innerHTML = '<span class="text-info"><i class="fas fa-spinner fa-spin"></i> Syncing history...</span>';
+
+        fetch('/api/betfair/sync', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({days_back: parseInt(daysBack)})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                resultEl.innerHTML = '<span class="text-danger">' + data.error + '</span>';
+            } else {
+                resultEl.innerHTML = '<span class="text-success">' + data.message + '</span>';
+                // Refresh the page to show new data
+                setTimeout(() => window.location.reload(), 1500);
+            }
+        })
+        .catch(err => {
+            resultEl.innerHTML = '<span class="text-danger">Sync error: ' + err + '</span>';
+        });
+    }
+
+    function reenrichFromBetfair() {
+        const daysBack = document.getElementById('syncDays').value;
+        const resultEl = document.getElementById('betfairSyncResult');
+        resultEl.innerHTML = '<span class="text-info"><i class="fas fa-spinner fa-spin"></i> Fetching Betfair history to re-classify leagues…</span>';
+        fetch('/api/betfair/reenrich-from-betfair', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({days_back: parseInt(daysBack)})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                resultEl.innerHTML = '<span class="text-danger">' + data.error + '</span>';
+            } else {
+                resultEl.innerHTML = '<span class="text-success"><i class="fas fa-check me-1"></i>' + data.message + '</span>';
+            }
+        })
+        .catch(err => {
+            resultEl.innerHTML = '<span class="text-danger">Error: ' + err + '</span>';
+        });
+    }
+
+    // Check status on page load
+    checkBetfairStatus();
+</script>
+</body>
+</html>

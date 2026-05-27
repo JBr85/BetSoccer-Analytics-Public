@@ -1,0 +1,33 @@
+# ── Personal data — NEVER commit ──────────────────────────────
+bets.db
+*.db
+betfair_config.json
+.betfair.key
+uploads/
+*.csv
+*.pdf
+*.xlsx
+
+# Local config / state
+config.json
+picks/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# IDE / OS
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db
