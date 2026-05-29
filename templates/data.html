@@ -71,6 +71,11 @@
 
             <!-- Action bar -->
             <div class="action-bar">
+                <input type="file" id="uploadInput" accept=".csv,.pdf" style="display:none;" onchange="uploadFile(this)">
+                <button class="btn btn-sm btn-primary" id="uploadBtn" onclick="document.getElementById('uploadInput').click()" title="Import bets from a CSV or PDF export">
+                    <i class="fas fa-upload me-1"></i> Import CSV / PDF
+                </button>
+                <span class="border-end" style="height:24px;"></span>
                 <button class="btn btn-sm btn-outline-secondary" onclick="selectAll()">
                     <i class="fas fa-check-square me-1"></i> Select All
                 </button>
@@ -385,6 +390,42 @@
     function getSelectedIds() { return getChecked(); }
 
     // ── Delete ──────────────────────────────────────────────────────────────
+    function uploadFile(input) {
+        var file = input.files && input.files[0];
+        if (!file) return;
+
+        var btn = document.getElementById('uploadBtn');
+        var original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Importing…';
+
+        var form = new FormData();
+        form.append('file', file);
+
+        fetch('/api/upload', { method: 'POST', body: form })
+        .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+        .then(function(res) {
+            if (!res.ok || res.data.error) {
+                alert('Import failed: ' + (res.data.error || 'Unknown error'));
+                return;
+            }
+            var d = res.data;
+            alert('Imported ' + d.added + ' bet' + (d.added === 1 ? '' : 's') +
+                  ' from ' + (d.type ? d.type.toUpperCase() : 'file') + '.\n' +
+                  'Total records: ' + d.total + '.');
+            location.reload();
+        })
+        .catch(function(err) {
+            console.error(err);
+            alert('Import failed. Check console.');
+        })
+        .finally(function() {
+            btn.disabled = false;
+            btn.innerHTML = original;
+            input.value = '';   // allow re-selecting the same file
+        });
+    }
+
     function deleteSelected() {
         var ids = getChecked();
         if (ids.length === 0) return;
